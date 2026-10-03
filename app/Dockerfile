@@ -12,7 +12,7 @@ ENV VITE_VERSION=${VERSION} VITE_COMMIT=${COMMIT}
 RUN npm run build
 
 # Runtime: nginx as an unprivileged user (uid 101) on port 8080; only static files, no Node.js.
-FROM nginxinc/nginx-unprivileged:1.30-alpine@sha256:ed04ec1ff34502c339ee5c3ae3f855442398edc1d05591e2b98981dcbbd20b1e
+FROM nginxinc/nginx-unprivileged:1.31-alpine@sha256:26b0bf6fbf07297983cb341998d79c831508787de26627dd2a112321b9c3a4af
 # Apply Alpine security fixes published after the base image was built (the Trivy gate found pcre2
 # CVE-2026-103111 in 1.30-alpine). Then drop back to the unprivileged user.
 USER 0
