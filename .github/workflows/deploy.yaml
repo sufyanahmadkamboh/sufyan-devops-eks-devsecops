@@ -130,6 +130,21 @@ jobs:
           sed -i -e "s|IMAGE_REPOSITORY|${REPO}|" -e "s|IMAGE_DIGEST|${DIGEST}|" k8s/kustomization.yaml
           kubectl apply -k k8s
           kubectl -n "${NAMESPACE}" rollout status deployment/profile-card --timeout=300s
+      - name: Least privilege check (this pipeline must not be able to touch anything else)
+        run: |
+          ok=1
+          expect() {  # expected answer, then the kubectl auth can-i arguments
+            local want="$1" got; shift
+            got="$(kubectl auth can-i "$@" 2>/dev/null || true)"
+            echo "can-i $* -> ${got} (expected ${want})"
+            [[ "${got}" == "${want}" ]] || ok=0
+          }
+          expect yes create deployments -n "${NAMESPACE}"
+          expect no create deployments -n kube-system
+          expect no get secrets -n kube-system
+          expect no create clusterrolebindings
+          expect no delete namespaces
+          (( ok ))
       - name: Smoke test through the load balancer
         id: smoke
         run: |
