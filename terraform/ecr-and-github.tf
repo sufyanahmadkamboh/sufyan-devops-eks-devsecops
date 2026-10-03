@@ -26,9 +26,23 @@ resource "aws_ecr_lifecycle_policy" "app" {
 }
 
 # GitHub Actions signs in with OIDC: no AWS keys are stored in GitHub.
-# The identity provider already exists in this account and is shared: it is only read here, never changed.
+# The identity provider is shared by every repository in an account. By default it is only read (never changed);
+# create_github_oidc_provider = true creates it, for a fresh account that has none.
 data "aws_iam_openid_connect_provider" "github" {
-  url = "https://token.actions.githubusercontent.com"
+  count = var.create_github_oidc_provider ? 0 : 1
+  url   = "https://token.actions.githubusercontent.com"
+}
+
+resource "aws_iam_openid_connect_provider" "github" {
+  count          = var.create_github_oidc_provider ? 1 : 0
+  url            = "https://token.actions.githubusercontent.com"
+  client_id_list = ["sts.amazonaws.com"]
+}
+
+locals {
+  github_oidc_provider_arn = (var.create_github_oidc_provider
+    ? aws_iam_openid_connect_provider.github[0].arn
+  : data.aws_iam_openid_connect_provider.github[0].arn)
 }
 
 data "aws_iam_policy_document" "github_trust" {
@@ -36,7 +50,7 @@ data "aws_iam_policy_document" "github_trust" {
     actions = ["sts:AssumeRoleWithWebIdentity"]
     principals {
       type        = "Federated"
-      identifiers = [data.aws_iam_openid_connect_provider.github.arn]
+      identifiers = [local.github_oidc_provider_arn]
     }
     condition {
       test     = "StringEquals"

@@ -36,6 +36,15 @@ variable "github_oidc_subject_prefix" {
   default     = "repo:sufyanahmadkamboh@25397028/sufyan-devops-eks-devsecops@1403679100"
 }
 
+variable "create_github_oidc_provider" {
+  description = <<-EOT
+    Create the GitHub OIDC identity provider. Only for an account that has none yet: the provider is shared by every
+    repository in the account, so where one exists (as in the account this was built in) it is only read, never changed.
+  EOT
+  type        = bool
+  default     = false
+}
+
 variable "kubernetes_version" {
   description = "EKS Kubernetes version."
   type        = string
