@@ -19,6 +19,9 @@ module "eks" {
   encryption_config                      = { resources = ["secrets"] }
   kms_key_deletion_window_in_days        = 7
 
+  # Pod Identity is used instead of IRSA, so no extra IAM OIDC provider is needed.
+  enable_irsa = false
+
   # Access entries instead of the aws-auth ConfigMap. The creator (the IAM user running Terraform) is admin.
   authentication_mode                      = "API"
   enable_cluster_creator_admin_permissions = true

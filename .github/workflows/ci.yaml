@@ -82,7 +82,7 @@ jobs:
         run: trivy config --quiet --exit-code 1 --severity HIGH,CRITICAL --ignorefile .trivyignore.yaml --skip-dirs terraform/.terraform terraform
       - name: Render the Kubernetes manifests with a sample image digest
         run: |
-          sed -i -e 's|IMAGE_REPOSITORY|registry.example/profile-card|'             -e 's|IMAGE_DIGEST|sha256:0000000000000000000000000000000000000000000000000000000000000000|' k8s/kustomization.yaml
+          sed -i -e 's|IMAGE_REPOSITORY|000000000000.dkr.ecr.eu-central-1.amazonaws.com/eks-devsecops/profile-card|'             -e 's|IMAGE_DIGEST|sha256:0000000000000000000000000000000000000000000000000000000000000000|' k8s/kustomization.yaml
           mkdir -p rendered && kubectl kustomize k8s > rendered/all.yaml
       - run: kubeconform -strict -summary rendered/all.yaml
       - name: Kubernetes misconfiguration scan
