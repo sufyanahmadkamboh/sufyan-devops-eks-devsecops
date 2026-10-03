@@ -1,5 +1,6 @@
-# Default deny for the namespace, then one exception: HTTP on 8080 from inside the VPC
-# (the load balancer's network interfaces and the kubelet health probes).
+# Default deny for the namespace, then one exception: HTTP on 8080 from the load balancer's subnets only.
+# (On EKS, pod IPs come from the VPC range, so "allow the VPC" would also allow every other pod in the cluster.
+#  Kubelet health probes keep working: the VPC CNI network policy agent allows traffic from the node itself.)
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -11,12 +12,12 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-http-from-vpc
+  name: allow-http-from-load-balancer
 spec:
   podSelector: {}
   policyTypes: [Ingress]
   ingress:
     - from:
-        - ipBlock: {cidr: 10.42.0.0/16}
+        - ipBlock: {cidr: 10.42.48.0/23}   # public subnets, where the ALB's network interfaces live
       ports:
         - {protocol: TCP, port: 8080}
