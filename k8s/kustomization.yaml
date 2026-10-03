@@ -1,0 +1,22 @@
+# The namespace (with Pod Security "restricted") is created by Terraform; the pipeline only deploys into it.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: profile-card
+labels:
+  - pairs:
+      app.kubernetes.io/name: profile-card
+      app.kubernetes.io/part-of: eks-devsecops
+    includeSelectors: true
+resources:
+  - serviceaccount.yaml
+  - deployment.yaml
+  - service.yaml
+  - ingress.yaml
+  - networkpolicy.yaml
+  - pdb.yaml
+# The pipeline replaces IMAGE_REPOSITORY and IMAGE_DIGEST with the image it just built, scanned and signed:
+# pods run an exact digest, never a tag.
+images:
+  - name: profile-card
+    newName: IMAGE_REPOSITORY
+    digest: IMAGE_DIGEST

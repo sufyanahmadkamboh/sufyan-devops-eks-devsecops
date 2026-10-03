@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: profile-card
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxUnavailable: 0, maxSurge: 1}   # zero-downtime rollouts
+  selector:
+    matchLabels: {}
+  template:
+    spec:
+      serviceAccountName: profile-card
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10101    # above 10000: never collides with a user on the node
+        runAsGroup: 10101
+        seccompProfile: {type: RuntimeDefault}
+      topologySpreadConstraints:   # one replica per availability zone when possible
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: {app.kubernetes.io/name: profile-card}
+      containers:
+        - name: web
+          image: profile-card
+          ports:
+            - {name: http, containerPort: 8080}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 50m, memory: 32Mi}
+            limits: {cpu: 200m, memory: 64Mi}
+          readinessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}   # nginx writes its pid and temp files here; the rest is read-only
+      volumes:
+        - name: tmp
+          emptyDir: {sizeLimit: 16Mi}

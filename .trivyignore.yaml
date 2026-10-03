@@ -1,0 +1,20 @@
+# Accepted risks: each one is a deliberate trade-off, reviewed, explained and dated. The pipeline fails on anything else.
+misconfigurations:
+  - id: AWS-0040
+    paths: ["terraform-aws-modules/eks/aws/main.tf"]
+    statement: >-
+      Public EKS API endpoint: GitHub-hosted runners deploy over it, authenticated by IAM (OIDC role + access entry
+      scoped to one namespace). Production: private endpoint only, with self-hosted runners in the VPC.
+    expired_at: 2027-04-01
+  - id: AWS-0041
+    paths: ["terraform-aws-modules/eks/aws/main.tf"]
+    statement: >-
+      Public endpoint open to 0.0.0.0/0: GitHub-hosted runners have no fixed IPs (see AWS-0040). Every request
+      still needs a valid IAM identity with an EKS access entry.
+    expired_at: 2027-04-01
+  - id: AWS-0104
+    paths: ["terraform-aws-modules/eks/aws/node_groups.tf"]
+    statement: >-
+      Nodes need outbound access (via the NAT gateway) to ECR, EKS, STS and the OS package mirrors. Pod egress is
+      restricted separately: the app namespace denies all egress with a NetworkPolicy.
+    expired_at: 2027-04-01

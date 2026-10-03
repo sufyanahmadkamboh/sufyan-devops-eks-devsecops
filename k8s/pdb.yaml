@@ -1,0 +1,8 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: profile-card
+spec:
+  minAvailable: 1   # node upgrades never take the site down
+  selector:
+    matchLabels: {}

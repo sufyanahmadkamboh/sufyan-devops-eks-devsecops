@@ -1,0 +1,25 @@
+# The AWS Load Balancer Controller turns this into an internet-facing Application Load Balancer.
+# HTTP only: TLS needs a domain name for the certificate (see docs/architecture.md).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: profile-card
+  annotations:
+    alb.ingress.kubernetes.io/load-balancer-name: eks-devsecops-profile-card
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip            # traffic goes straight to pod IPs
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
+    alb.ingress.kubernetes.io/healthcheck-path: /healthz
+    alb.ingress.kubernetes.io/load-balancer-attributes: >-
+      routing.http.drop_invalid_header_fields.enabled=true,routing.http.desync_mitigation_mode=strictest
+spec:
+  ingressClassName: alb
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: profile-card
+                port: {name: http}

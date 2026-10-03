@@ -1,0 +1,18 @@
+# Terraform: state stays on the operator's machine (it contains account details), never in git
+terraform/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+*.tfvars
+crash.log
+# app
+node_modules/
+dist/
+# local secrets and lab output
+.env
+*.csv
+*accessKeys*
+.lab/
+video/out/
+__pycache__/

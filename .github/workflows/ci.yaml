@@ -1,0 +1,106 @@
+---
+# Security and quality checks on every pull request and every push to main. Nothing here touches AWS.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  secrets:
+    name: Secret scan (gitleaks, full history)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - run: scripts/ci/install-tools.sh gitleaks
+      - run: gitleaks git --redact --no-banner --exit-code 1 .
+
+  app:
+    name: App (lint, test, audit, build)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - run: npm ci --no-fund
+      - run: npm run lint
+      - run: npm test
+      - name: Dependency audit (fail on high or critical)
+        run: npm audit --audit-level=high
+      - run: npm run build
+
+  container:
+    name: Container (hadolint, build, Trivy gate)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Dockerfile lint
+        run: docker run --rm -i hadolint/hadolint:v2.15.1@sha256:32dac94127fd60b7b7e3fbfc65e1383b9b5e25c9bfd7b8536de7a539fe68a12d < app/Dockerfile
+      - run: scripts/ci/install-tools.sh trivy
+      - run: docker build -t profile-card:ci app
+      - name: Image vulnerability gate (no fixable CRITICAL or HIGH)
+        run: trivy image --quiet --exit-code 1 --severity CRITICAL,HIGH --ignore-unfixed profile-card:ci
+
+  infrastructure:
+    name: Terraform + Kubernetes (fmt, validate, misconfiguration scan, schemas)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: scripts/ci/install-tools.sh terraform trivy kubeconform
+      - run: terraform -chdir=terraform fmt -check -recursive
+      - run: terraform -chdir=terraform init -backend=false -input=false
+      - run: terraform -chdir=terraform validate
+      - name: Terraform misconfiguration scan (accepted risks are listed in .trivyignore.yaml)
+        run: trivy config --quiet --exit-code 1 --severity HIGH,CRITICAL --ignorefile .trivyignore.yaml --skip-dirs terraform/.terraform terraform
+      - name: Render the Kubernetes manifests with a sample image digest
+        run: |
+          sed -i -e 's|IMAGE_REPOSITORY|registry.example/profile-card|'             -e 's|IMAGE_DIGEST|sha256:0000000000000000000000000000000000000000000000000000000000000000|' k8s/kustomization.yaml
+          mkdir -p rendered && kubectl kustomize k8s > rendered/all.yaml
+      - run: kubeconform -strict -summary rendered/all.yaml
+      - name: Kubernetes misconfiguration scan
+        run: trivy config --quiet --exit-code 1 --severity LOW,MEDIUM,HIGH,CRITICAL rendered/all.yaml
+
+  pipeline-security:
+    name: Pipeline security (pinned actions, actionlint, zizmor)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: scripts/ci/check-pinned-actions.sh
+      - run: scripts/ci/install-tools.sh actionlint
+      - run: actionlint
+      - name: zizmor (workflow security audit)
+        run: |
+          pip install --quiet --require-hashes -r tools/zizmor-requirements.txt
+          zizmor --min-severity medium .github/workflows
