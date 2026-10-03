@@ -1,0 +1,3 @@
+💻 Code, Terraform and the pipeline: https://github.com/sufyanahmadkamboh/sufyan-devops-eks-devsecops
+⚠️ If you build it in your own account: run scripts/teardown.sh the same day. The lab costs roughly $0.30 per hour while it runs.
+Which attack would you try next against this cluster?

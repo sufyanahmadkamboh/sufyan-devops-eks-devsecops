@@ -27,6 +27,7 @@ sys.path.insert(0, str(HERE))
 from pygments.formatters import HtmlFormatter  # noqa: E402
 
 from components import SVG_DEFS  # noqa: E402
+from redact import check, redact  # noqa: E402
 from scenes import SCENES  # noqa: E402
 
 OUT = HERE / "out"
@@ -49,11 +50,17 @@ PRONOUNCE = [
     (r"\bkustomization\b", "customization"), (r"\bnginx\b", "engine x"), (r"\bJSON\b", "jason"), (r"\bAPI\b", "A P I"),
     (r"\bCEL\b", "cel"), (r"\bpromtool\b", "prom tool"), (r"\bactionlint\b", "action lint"), (r"\bCODEOWNERS\b", "code owners"),
     (r"\be2e\b", "e 2 e"), (r"\bSHA\b", "shah"), (r"\bEU\b", "E U"), (r"\bID\b", "I D"),
+    (r"\bEKS\b", "E K S"), (r"\bVPC\b", "V P C"), (r"\bIAM\b", "I A M"), (r"\bECR\b", "E C R"), (r"\bALB\b", "A L B"),
+    (r"\bKMS\b", "K M S"), (r"\bIMDSv2\b", "I M D S version 2"), (r"\bIMDS\b", "I M D S"), (r"\bCIDR\b", "cider"),
+    (r"\bnpm\b", "N P M"), (r"\bVite\b", "veet"), (r"\bgitleaks\b", "git leaks"), (r"\bhadolint\b", "hado lint"),
+    (r"\bkubeconform\b", "kube conform"), (r"\bzizmor\b", "zizz-more"), (r"\bHTTPS\b", "H T T P S"), (r"\bHTTP\b", "H T T P"),
+    (r"\bDNS\b", "D N S"), (r"\bCDN\b", "C D N"), (r"\bWAF\b", "waff"), (r"\bHPA\b", "H P A"), (r"\bS3\b", "S 3"),
+    (r"\bTLS\b", "T L S"), (r"\bCLI\b", "C L I"), (r"\bOIDC\b", "O I D C"), (r"\bACM\b", "A C M"), (r"\bREADME\b", "read me"),
 ]
 
 
 def spoken(step: dict) -> str:
-    text = step["tts"] or step["say"]
+    text = redact(step["tts"] or step["say"])
     for pattern, repl in PRONOUNCE:
         text = re.sub(pattern, repl, text)
     return text
@@ -156,11 +163,15 @@ def write_page() -> Path:
             f'<div class="bottom"><span><b>Sufyan Ahmad</b> · DevOps Engineer</span><div class="bar">{bar}</div>'
             f'<span class="chap">{chaps[cur][1]}</span></div></section>')
     page = OUT / "page.html"
-    page.write_text(
-        '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Zero-trust supply chain: video</title>'
+    html_out = redact(
+
+        '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>EKS DevSecOps: video</title>'
         '<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">'
-        f"<style>{CSS}{style}.code pre{{background:transparent}}</style></head><body>{SVG_DEFS}{''.join(parts)}<script>{JS}</script></body></html>",
-        encoding="utf-8", newline="\n")
+        f"<style>{CSS}{style}.code pre{{background:transparent}}</style></head><body>{SVG_DEFS}{''.join(parts)}<script>{JS}</script></body></html>")
+    problems = check(re.sub(r"<[^>]+>", " ", html_out))
+    if problems:
+        raise SystemExit(f"redaction check failed for the page: {problems}")
+    page.write_text(html_out, encoding="utf-8", newline="\n")
     return page
 
 
@@ -268,14 +279,20 @@ def captions_and_chapters(plan: list[dict]) -> None:
             total_chars = sum(len(p) for p in parts)
             for p in parts:
                 d = st["speech"] * len(p) / total_chars
-                cues.append((start, start + d, p))
+                cues.append((start, start + d, redact(p)))
                 start += d
             t += st["frames"] / FPS
     srt = "\n".join(f"{n}\n{stamp(a, True)} --> {stamp(b, True)}\n{text}\n" for n, (a, b, text) in enumerate(cues, 1))
+    for name, text in (("captions", srt), ("chapters", "\n".join(chaps))):
+        if check(text):
+            raise SystemExit(f"redaction check failed for {name}: {check(text)}")
     (YT / "captions.srt").write_text(srt, encoding="utf-8", newline="\n")
     (YT / "chapters.txt").write_text("\n".join(chaps) + "\n", encoding="utf-8", newline="\n")
     tpl = (YT / "description.template.md").read_text(encoding="utf-8")
-    (YT / "description.md").write_text(tpl.replace("{{CHAPTERS}}", "\n".join(chaps)), encoding="utf-8", newline="\n")
+    description = redact(tpl.replace("{{CHAPTERS}}", "\n".join(chaps)))
+    if check(description):
+        raise SystemExit(f"redaction check failed for the description: {check(description)}")
+    (YT / "description.md").write_text(description, encoding="utf-8", newline="\n")
     print(f"duration {stamp(t)} · {len(cues)} captions · {len(chaps)} chapters")
 
 
