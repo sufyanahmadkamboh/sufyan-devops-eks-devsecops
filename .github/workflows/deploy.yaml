@@ -117,10 +117,12 @@ jobs:
           done
           echo "ECR scan status: ${status}"
           [[ "${status}" == "COMPLETE" ]]
+          # With zero findings ECR returns no counts at all, so an empty answer means 0.
           counts="$(aws ecr describe-image-scan-findings --repository-name "${REPOSITORY}" --image-id imageDigest="${DIGEST}" \
             --query 'imageScanFindings.findingSeverityCounts' --output json)"
-          echo "ECR findings: ${counts}"
-          [[ "$(jq -r '.CRITICAL // 0' <<<"${counts}")" == 0 ]]
+          counts="${counts:-null}"
+          echo "ECR findings by severity: $(jq -c '. // {}' <<<"${counts}")"
+          [[ "$(jq -r '(. // {}).CRITICAL // 0' <<<"${counts}")" == 0 ]]
       - name: Sign the image (keyless, recorded in the public Rekor log)
         env:
           IMAGE: ${{ steps.push.outputs.repository }}@${{ steps.push.outputs.digest }}
