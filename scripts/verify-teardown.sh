@@ -31,12 +31,46 @@ check "target groups (k8s-*)"  aws elbv2 describe-target-groups --query "length(
 check "ECR repository"         aws ecr describe-repositories --query "length(repositories[?starts_with(repositoryName,'eks-devsecops/')])"
 check "CloudWatch log groups"  aws logs describe-log-groups --query "length(logGroups[?contains(logGroupName,'eks-devsecops')])"
 check "KMS alias"              aws kms list-aliases --query "length(Aliases[?AliasName=='alias/eks/eks-devsecops'])"
-check "tagged resources (Resource Groups Tagging API)" \
-  aws resourcegroupstaggingapi get-resources --tag-filters Key=Project,Values=eks-devsecops --query 'length(ResourceTagMappingList)'
+# The tagging index lags behind deletions (it can list deleted resources for hours), so every tagged ARN is
+# checked for its real state. A KMS key waiting out its mandatory deletion window counts as deleted.
+really_exists() {  # ARN -> prints 1 if the resource still exists
+  local arn="$1" id="${1##*/}"
+  case "$arn" in
+    *:natgateway/*)     [[ "$(aws ec2 describe-nat-gateways --nat-gateway-ids "$id" --query 'NatGateways[0].State' --output text 2>/dev/null)" =~ ^(pending|available|deleting)$ ]] && echo 1 ;;
+    *:security-group/*) aws ec2 describe-security-groups --group-ids "$id" >/dev/null 2>&1 && echo 1 ;;
+    *:vpc-flow-log/*)   [[ "$(aws ec2 describe-flow-logs --flow-log-ids "$id" --query 'length(FlowLogs)' --output text 2>/dev/null)" == 1 ]] && echo 1 ;;
+    *:kms:*:key/*)      [[ "$(aws kms describe-key --key-id "$id" --query 'KeyMetadata.KeyState' --output text 2>/dev/null)" =~ ^(Enabled|Disabled)$ ]] && echo 1 ;;
+    *)                  echo 1 ;;   # unknown type: report it, never assume it is gone
+  esac
+}
+tagged_left() {
+  local arn
+  for arn in $(aws resourcegroupstaggingapi get-resources --tag-filters Key=Project,Values=eks-devsecops \
+                 --query 'ResourceTagMappingList[].ResourceARN' --output text); do
+    really_exists "$arn"
+  done | grep -c '^1$'
+}
+check "anything else tagged Project=eks-devsecops" tagged_left
 
-echo "Global IAM resources of the project:"
-check "IAM roles eks-devsecops*"    aws iam list-roles --query "length(Roles[?starts_with(RoleName,'eks-devsecops')])"
-check "IAM policies eks-devsecops*" aws iam list-policies --scope Local --query "length(Policies[?starts_with(PolicyName,'eks-devsecops')])"
+echo "Global IAM resources of the project (name prefixes used by this project and its Terraform modules,"
+echo "counted only when they carry the tag Project=eks-devsecops, so other teams' roles never match):"
+ROLE_PREFIXES="starts_with(RoleName,'eks-devsecops') || starts_with(RoleName,'default-eks-node-group-') || starts_with(RoleName,'vpc-flow-log-role-')"
+POLICY_PREFIXES="starts_with(PolicyName,'eks-devsecops') || starts_with(PolicyName,'vpc-flow-log-to-cloudwatch-')"
+PROJECT_TAG="Tags[?Key=='Project' && Value=='eks-devsecops'] | length(@)"
+tagged_roles() {
+  local r
+  for r in $(aws iam list-roles --query "Roles[?${ROLE_PREFIXES}].RoleName" --output text); do
+    aws iam list-role-tags --role-name "$r" --query "$PROJECT_TAG" --output text
+  done | grep -c '^1$'
+}
+tagged_policies() {
+  local p
+  for p in $(aws iam list-policies --scope Local --query "Policies[?${POLICY_PREFIXES}].Arn" --output text); do
+    aws iam list-policy-tags --policy-arn "$p" --query "$PROJECT_TAG" --output text
+  done | grep -c '^1$'
+}
+check "IAM roles"    tagged_roles
+check "IAM policies" tagged_policies
 
 echo "Shared resources that must still exist (never touched by this project):"
 if aws iam list-open-id-connect-providers --query 'OpenIDConnectProviderList[].Arn' --output text | grep -q token.actions.githubusercontent.com; then

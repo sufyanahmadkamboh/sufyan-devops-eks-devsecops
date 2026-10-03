@@ -53,6 +53,7 @@ module "eks" {
   eks_managed_node_groups = {
     default = {
       ami_type       = "AL2023_x86_64_STANDARD"
+      iam_role_name  = "${local.name}-node" # every IAM name of the project starts with eks-devsecops
       instance_types = [var.node_instance_type]
       min_size       = 2
       max_size       = 3

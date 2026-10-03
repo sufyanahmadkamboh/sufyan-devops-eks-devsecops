@@ -30,4 +30,6 @@ module "vpc" {
   create_flow_log_cloudwatch_iam_role             = true
   flow_log_max_aggregation_interval               = 60
   flow_log_cloudwatch_log_group_retention_in_days = 7
+  vpc_flow_log_iam_role_name                      = "${local.name}-vpc-flow-log"
+  vpc_flow_log_iam_policy_name                    = "${local.name}-vpc-flow-log"
 }
