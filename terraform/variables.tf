@@ -26,6 +26,16 @@ variable "github_repository" {
   default     = "sufyanahmadkamboh/sufyan-devops-eks-devsecops"
 }
 
+variable "github_oidc_subject_prefix" {
+  description = <<-EOT
+    Prefix of the GitHub OIDC "sub" claim. New repositories use immutable IDs (owner@id/repo@id), so a deleted and
+    re-created repository with the same name cannot assume the role. Read it with:
+    gh api repos/OWNER/REPO/actions/oidc/customization/sub
+  EOT
+  type        = string
+  default     = "repo:sufyanahmadkamboh@25397028/sufyan-devops-eks-devsecops@1403679100"
+}
+
 variable "kubernetes_version" {
   description = "EKS Kubernetes version."
   type        = string

@@ -107,7 +107,16 @@ jobs:
         env:
           DIGEST: ${{ steps.push.outputs.digest }}
         run: |
-          aws ecr wait image-scan-complete --repository-name "${REPOSITORY}" --image-id imageDigest="${DIGEST}"
+          # The scan is registered a few seconds after the push (the CLI waiter gives up on ScanNotFoundException).
+          status=""
+          for _ in $(seq 1 60); do
+            status="$(aws ecr describe-image-scan-findings --repository-name "${REPOSITORY}" --image-id imageDigest="${DIGEST}" \
+              --query 'imageScanStatus.status' --output text 2>/dev/null || true)"
+            [[ "${status}" == "COMPLETE" || "${status}" == "FAILED" || "${status}" == "UNSUPPORTED_IMAGE" ]] && break
+            sleep 5
+          done
+          echo "ECR scan status: ${status}"
+          [[ "${status}" == "COMPLETE" ]]
           counts="$(aws ecr describe-image-scan-findings --repository-name "${REPOSITORY}" --image-id imageDigest="${DIGEST}" \
             --query 'imageScanFindings.findingSeverityCounts' --output json)"
           echo "ECR findings: ${counts}"
