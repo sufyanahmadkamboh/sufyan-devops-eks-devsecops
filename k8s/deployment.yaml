@@ -13,6 +13,7 @@ spec:
   template:
     spec:
       serviceAccountName: profile-card
+      terminationGracePeriodSeconds: 30
       automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
@@ -34,6 +35,10 @@ spec:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities: {drop: [ALL]}
+          lifecycle:
+            # Keep serving while the load balancer deregisters this pod (longer than the deregistration delay).
+            preStop:
+              sleep: {seconds: 15}
           resources:
             requests: {cpu: 50m, memory: 32Mi}
             limits: {cpu: 200m, memory: 64Mi}

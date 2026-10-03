@@ -89,6 +89,8 @@ resource "kubernetes_namespace_v1" "app" {
       "pod-security.kubernetes.io/enforce-version" = "latest"
       "pod-security.kubernetes.io/warn"            = "restricted"
       "pod-security.kubernetes.io/audit"           = "restricted"
+      # New pods only count as ready once the load balancer reports them healthy (zero-downtime rollouts).
+      "elbv2.k8s.aws/pod-readiness-gate-inject" = "enabled"
     }
   }
 

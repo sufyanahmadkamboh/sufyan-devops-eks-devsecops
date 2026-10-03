@@ -10,6 +10,8 @@ metadata:
     alb.ingress.kubernetes.io/target-type: ip            # traffic goes straight to pod IPs
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
     alb.ingress.kubernetes.io/healthcheck-path: /healthz
+    # Stop sending new requests to a terminating pod after 10 s (the pod waits 15 s in preStop).
+    alb.ingress.kubernetes.io/target-group-attributes: deregistration_delay.timeout_seconds=10
     alb.ingress.kubernetes.io/load-balancer-attributes: >-
       routing.http.drop_invalid_header_fields.enabled=true,routing.http.desync_mitigation_mode=strictest
 spec:
