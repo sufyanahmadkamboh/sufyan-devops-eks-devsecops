@@ -36,11 +36,21 @@ check "KMS alias"              aws kms list-aliases --query "length(Aliases[?Ali
 really_exists() {  # ARN -> prints 1 if the resource still exists
   local arn="$1" id="${1##*/}"
   case "$arn" in
-    *:natgateway/*)     [[ "$(aws ec2 describe-nat-gateways --nat-gateway-ids "$id" --query 'NatGateways[0].State' --output text 2>/dev/null)" =~ ^(pending|available|deleting)$ ]] && echo 1 ;;
-    *:security-group/*) aws ec2 describe-security-groups --group-ids "$id" >/dev/null 2>&1 && echo 1 ;;
-    *:vpc-flow-log/*)   [[ "$(aws ec2 describe-flow-logs --flow-log-ids "$id" --query 'length(FlowLogs)' --output text 2>/dev/null)" == 1 ]] && echo 1 ;;
-    *:kms:*:key/*)      [[ "$(aws kms describe-key --key-id "$id" --query 'KeyMetadata.KeyState' --output text 2>/dev/null)" =~ ^(Enabled|Disabled)$ ]] && echo 1 ;;
-    *)                  echo 1 ;;   # unknown type: report it, never assume it is gone
+    *:natgateway/*)       [[ "$(aws ec2 describe-nat-gateways --nat-gateway-ids "$id" --query 'NatGateways[0].State' --output text 2>/dev/null)" =~ ^(pending|available|deleting)$ ]] && echo 1 ;;
+    *:security-group/*)   aws ec2 describe-security-groups --group-ids "$id" >/dev/null 2>&1 && echo 1 ;;
+    *:subnet/*)           aws ec2 describe-subnets --subnet-ids "$id" >/dev/null 2>&1 && echo 1 ;;
+    *:vpc/*)              aws ec2 describe-vpcs --vpc-ids "$id" >/dev/null 2>&1 && echo 1 ;;
+    *:route-table/*)      aws ec2 describe-route-tables --route-table-ids "$id" >/dev/null 2>&1 && echo 1 ;;
+    *:internet-gateway/*) aws ec2 describe-internet-gateways --internet-gateway-ids "$id" >/dev/null 2>&1 && echo 1 ;;
+    *:network-acl/*)      aws ec2 describe-network-acls --network-acl-ids "$id" >/dev/null 2>&1 && echo 1 ;;
+    *:elastic-ip/*)       aws ec2 describe-addresses --allocation-ids "$id" >/dev/null 2>&1 && echo 1 ;;
+    *:network-interface/*) aws ec2 describe-network-interfaces --network-interface-ids "$id" >/dev/null 2>&1 && echo 1 ;;
+    *:launch-template/*)  aws ec2 describe-launch-templates --launch-template-ids "$id" >/dev/null 2>&1 && echo 1 ;;
+    *:instance/*)         [[ "$(aws ec2 describe-instances --instance-ids "$id" --query 'Reservations[0].Instances[0].State.Name' --output text 2>/dev/null)" =~ ^(pending|running|stopping|stopped)$ ]] && echo 1 ;;
+    *:vpc-flow-log/*)     [[ "$(aws ec2 describe-flow-logs --flow-log-ids "$id" --query 'length(FlowLogs)' --output text 2>/dev/null)" == 1 ]] && echo 1 ;;
+    *:kms:*:key/*)        [[ "$(aws kms describe-key --key-id "$id" --query 'KeyMetadata.KeyState' --output text 2>/dev/null)" =~ ^(Enabled|Disabled)$ ]] && echo 1 ;;
+    *:logs:*:log-group:*) aws logs describe-log-groups --log-group-name-prefix "${arn#*:log-group:}" --query 'length(logGroups)' --output text 2>/dev/null | grep -qv '^0$' && echo 1 ;;
+    *)                    echo 1 ;;   # unknown type: report it, never assume it is gone
   esac
 }
 tagged_left() {
