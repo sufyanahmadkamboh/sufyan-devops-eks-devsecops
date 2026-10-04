@@ -43,7 +43,7 @@ spec:
             requests: {cpu: 50m, memory: 32Mi}
             limits: {cpu: 200m, memory: 64Mi}
           readinessProbe:
-            httpGet: {path: /healthz, port: http}
+            httpGet: {path: /health, port: http}
             periodSeconds: 5
           livenessProbe:
             httpGet: {path: /healthz, port: http}
