@@ -1,5 +1,7 @@
 ---
 # Continuous deployment to Amazon EKS on every push to main.
+#   0. checks:     the full CI security suite (ci.yaml): secrets, lint, tests, npm audit, hadolint,
+#                  Trivy image + IaC scans, kubeconform, pipeline security. Any failure stops the release.
 #   1. build-scan: builds the image and blocks on vulnerabilities. No cloud credentials at all.
 #   2. deploy:     only if 1 passed. Short-lived AWS credentials through GitHub OIDC (no stored keys),
 #                  push to ECR by digest, sign with cosign, deploy the exact digest, wait, smoke test.
@@ -12,6 +14,7 @@ on:
       - app/**
       - k8s/**
       - .github/workflows/deploy.yaml
+      - .github/workflows/ci.yaml
   workflow_dispatch:
 
 permissions: {}
@@ -27,8 +30,17 @@ env:
   NAMESPACE: profile-card
 
 jobs:
+  checks:
+    name: Security checks
+    permissions:
+      contents: read
+    # The self-repository form ($/...) is safer, but actionlint 1.7.12 does not parse it yet. This job has no
+    # earlier steps that could plant files, so ./ is equivalent here.
+    uses: ./.github/workflows/ci.yaml # zizmor: ignore[self-repository]
+
   build-scan:
     name: Build and scan
+    needs: checks
     runs-on: ubuntu-24.04
     permissions:
       contents: read

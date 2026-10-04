@@ -1,16 +1,19 @@
 ---
 # Security and quality checks on every pull request and every push to main. Nothing here touches AWS.
+# deploy.yaml also calls this workflow first, so nothing is deployed unless every check passes.
 name: ci
 
 on:
   pull_request:
   push:
     branches: [main]
+  workflow_call:
 
 permissions: {}
 
 concurrency:
-  group: ci-${{ github.ref }}
+  # github.workflow is the caller's name when called from deploy.yaml, so the two runs never cancel each other.
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
