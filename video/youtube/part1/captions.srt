@@ -1,0 +1,1555 @@
+1
+00:00:00,500 --> 00:00:03,403
+Here is the question this workshop answers.
+
+2
+00:00:03,403 --> 00:00:07,725
+How do we build a secure, repeatable Kubernetes platform on AWS,
+
+3
+00:00:07,725 --> 00:00:12,721
+where a developer just pushes code, and that code is automatically tested,
+
+4
+00:00:12,721 --> 00:00:16,300
+security scanned, signed, and safely deployed to EKS?
+
+5
+00:00:16,833 --> 00:00:19,456
+Every push goes through the same checks:
+
+6
+00:00:19,456 --> 00:00:22,866
+leaked secrets, unit tests, vulnerable dependencies,
+
+7
+00:00:22,866 --> 00:00:27,588
+the Dockerfile, the infrastructure code, and the container image itself.
+
+8
+00:00:28,133 --> 00:00:35,263
+Only then is the image deployed to Amazon EKS, by its exact digest, behind an AWS load balancer.
+
+9
+00:00:35,800 --> 00:00:40,380
+And all of that happens without a single AWS access key stored in GitHub.
+
+10
+00:00:40,933 --> 00:00:47,331
+I will build the whole thing with you on a real AWS account, from a fresh clone of the repository.
+
+11
+00:00:47,331 --> 00:00:49,616
+In part one, we build the platform.
+
+12
+00:00:49,616 --> 00:00:52,684
+In part two, we ship code through the pipeline,
+
+13
+00:00:52,684 --> 00:00:57,188
+break things on purpose, troubleshoot them, and tear everything down.
+
+14
+00:00:57,188 --> 00:00:58,625
+Let us start with why.
+
+15
+00:01:00,367 --> 00:01:03,075
+Let us be concrete about the problems.
+
+16
+00:01:03,075 --> 00:01:06,710
+First, long lived AWS keys stored in the CI system.
+
+17
+00:01:06,710 --> 00:01:11,771
+If one leaks, an attacker has your cloud account until someone notices.
+
+18
+00:01:12,333 --> 00:01:14,634
+Second, security as a final step.
+
+19
+00:01:14,634 --> 00:01:20,978
+Someone scans the application after it is already in production, or nobody scans it at all.
+
+20
+00:01:21,533 --> 00:01:24,907
+Third, nobody knows what is inside the container image.
+
+21
+00:01:24,907 --> 00:01:28,159
+When the next big library vulnerability is announced,
+
+22
+00:01:28,159 --> 00:01:31,840
+answering 'are we affected?' takes days instead of a search.
+
+23
+00:01:32,400 --> 00:01:35,262
+Fourth, no proof of where an image came from.
+
+24
+00:01:35,262 --> 00:01:39,014
+Anyone who can push to the registry can put an image there.
+
+25
+00:01:39,567 --> 00:01:44,106
+Fifth, containers that run as root, with full Linux capabilities.
+
+26
+00:01:44,106 --> 00:01:48,016
+One application bug, and the attacker controls the node.
+
+27
+00:01:48,567 --> 00:01:52,901
+And sixth, infrastructure built by clicking around in the console.
+
+28
+00:01:52,901 --> 00:01:56,578
+Nobody can review it, and nobody can rebuild it exactly.
+
+29
+00:01:58,333 --> 00:02:02,337
+So each tool in this project answers one of those problems.
+
+30
+00:02:02,337 --> 00:02:04,508
+EKS gives us managed Kubernetes:
+
+31
+00:02:04,508 --> 00:02:09,258
+AWS runs and patches the control plane, and we focus on our workloads.
+
+32
+00:02:09,800 --> 00:02:12,557
+Terraform turns the whole platform into code:
+
+33
+00:02:12,557 --> 00:02:17,460
+reviewed in a pull request, rebuilt identically, and destroyed with one command.
+
+34
+00:02:18,000 --> 00:02:21,887
+DevSecOps means the security checks live inside the pipeline.
+
+35
+00:02:21,887 --> 00:02:26,540
+A problem is caught minutes after the push, not months after the release.
+
+36
+00:02:27,100 --> 00:02:29,629
+Image scanning catches known vulnerabilities,
+
+37
+00:02:29,629 --> 00:02:34,686
+the SBOM lists every component, and the signature proves the image came from our pipeline.
+
+38
+00:02:35,233 --> 00:02:41,423
+GitHub OIDC replaces stored AWS keys with temporary credentials, valid for one job.
+
+39
+00:02:41,967 --> 00:02:44,624
+And the workload itself runs restricted:
+
+40
+00:02:44,624 --> 00:02:50,536
+non-root, a read-only file system, no Linux capabilities, and network policies around it.
+
+41
+00:02:52,300 --> 00:02:55,884
+Before we create anything, here is the complete picture.
+
+42
+00:02:55,884 --> 00:02:59,019
+A developer pushes code to the GitHub repository.
+
+43
+00:02:59,567 --> 00:03:02,655
+GitHub Actions runs the security checks first:
+
+44
+00:03:02,655 --> 00:03:05,474
+gitleaks for secrets, lint and unit tests,
+
+45
+00:03:05,474 --> 00:03:11,852
+npm audit, hadolint for the Dockerfile, and a Trivy scan of the Terraform and Kubernetes files.
+
+46
+00:03:11,852 --> 00:03:14,201
+It even checks the pipeline itself.
+
+47
+00:03:14,767 --> 00:03:21,571
+Only then does it build the Docker image, scan it with Trivy, generate an SBOM, and sign it with cosign.
+
+48
+00:03:22,133 --> 00:03:29,573
+The image goes to Amazon ECR, the container registry, and it is referenced by its digest, never just a tag.
+
+49
+00:03:30,133 --> 00:03:32,863
+EKS runs it with security restrictions:
+
+50
+00:03:32,863 --> 00:03:39,933
+Pod Security, network policies, resource limits, health probes, two replicas and a disruption budget.
+
+51
+00:03:40,467 --> 00:03:47,381
+And the AWS Load Balancer Controller turns our Kubernetes Ingress into an Application Load Balancer with a public URL.
+
+52
+00:03:49,133 --> 00:03:51,124
+And here is the AWS side.
+
+53
+00:03:51,124 --> 00:03:54,468
+Everything lives in one region, Frankfurt.
+
+54
+00:03:55,033 --> 00:03:57,328
+A VPC with two availability zones.
+
+55
+00:03:57,328 --> 00:04:01,581
+Public subnets hold only the load balancer and the NAT gateway.
+
+56
+00:04:01,581 --> 00:04:04,618
+The two worker nodes live in private subnets,
+
+57
+00:04:04,618 --> 00:04:09,073
+without public IP addresses, and VPC flow logs record the traffic.
+
+58
+00:04:09,633 --> 00:04:12,635
+The EKS control plane is managed by AWS.
+
+59
+00:04:12,635 --> 00:04:17,663
+It writes audit logs, and access is controlled with access entries.
+
+60
+00:04:18,200 --> 00:04:23,079
+KMS encrypts the Kubernetes secrets, and ECR stores our images.
+
+61
+00:04:23,633 --> 00:04:25,414
+CloudWatch keeps the logs.
+
+62
+00:04:25,414 --> 00:04:28,084
+IAM is global, so we are careful there:
+
+63
+00:04:28,084 --> 00:04:32,055
+we only create roles whose names start with eks-devsecops,
+
+64
+00:04:32,055 --> 00:04:36,848
+and we only read the shared GitHub identity provider, never change it.
+
+65
+00:04:37,400 --> 00:04:40,351
+The Application Load Balancer is the odd one out:
+
+66
+00:04:40,351 --> 00:04:42,098
+Terraform does not create it.
+
+67
+00:04:42,098 --> 00:04:46,194
+The load balancer controller creates it from our Kubernetes Ingress.
+
+68
+00:04:46,194 --> 00:04:50,109
+Remember that, because it matters a lot when we tear things down.
+
+69
+00:04:51,867 --> 00:04:54,041
+How do these parts talk to each other?
+
+70
+00:04:54,041 --> 00:04:56,502
+Internet traffic reaches the load balancer,
+
+71
+00:04:56,502 --> 00:05:01,653
+and the load balancer forwards it straight to the pod IP addresses in the private subnets.
+
+72
+00:05:02,200 --> 00:05:05,131
+The nodes can reach out, through the NAT gateway,
+
+73
+00:05:05,131 --> 00:05:09,259
+for example to pull images, but nothing on the internet can reach in.
+
+74
+00:05:09,800 --> 00:05:13,705
+GitHub Actions talks to AWS with a short lived role from OIDC.
+
+75
+00:05:13,705 --> 00:05:18,114
+That role can push to our container registry and describe our cluster.
+
+76
+00:05:18,667 --> 00:05:24,258
+The same role reaches Kubernetes through an access entry, which limits it to a single namespace.
+
+77
+00:05:24,800 --> 00:05:29,979
+And the load balancer controller gets its AWS permissions through EKS Pod Identity.
+
+78
+00:05:29,979 --> 00:05:33,099
+No access keys are stored anywhere in the cluster.
+
+79
+00:05:34,833 --> 00:05:37,822
+Here is the pipeline we are about to run.
+
+80
+00:05:37,822 --> 00:05:42,196
+Notice how many stages are security stages, marked in amber.
+
+81
+00:05:42,196 --> 00:05:46,788
+Secrets, dependencies, the Dockerfile, the infrastructure code.
+
+82
+00:05:47,333 --> 00:05:49,012
+Then the image itself:
+
+83
+00:05:49,012 --> 00:05:52,599
+a vulnerability scan, an SBOM, and a signature.
+
+84
+00:05:52,599 --> 00:05:55,957
+A classic CI/CD pipeline builds and deploys.
+
+85
+00:05:55,957 --> 00:06:00,918
+A DevSecOps pipeline also refuses to deploy what it cannot trust.
+
+86
+00:06:01,467 --> 00:06:03,589
+And the deployment itself is verified:
+
+87
+00:06:03,589 --> 00:06:06,605
+the exact digest is deployed, the rollout must finish,
+
+88
+00:06:06,605 --> 00:06:12,526
+the pipeline proves its own permissions are limited, and a smoke test goes through the real load balancer.
+
+89
+00:06:14,267 --> 00:06:16,475
+Let us start where you would start:
+
+90
+00:06:16,475 --> 00:06:17,800
+clone the repository.
+
+91
+00:06:17,800 --> 00:06:23,163
+Before we run anything, I want you to understand what we are actually about to build.
+
+92
+00:06:23,700 --> 00:06:25,892
+The pipeline lives in two workflows:
+
+93
+00:06:25,892 --> 00:06:29,423
+ci dot yaml with the security checks, and deploy dot yaml,
+
+94
+00:06:29,423 --> 00:06:32,954
+which runs those checks first and then builds and deploys.
+
+95
+00:06:32,954 --> 00:06:36,181
+CODEOWNERS and Dependabot handle reviews and updates.
+
+96
+00:06:36,733 --> 00:06:40,488
+The terraform folder describes the whole AWS platform:
+
+97
+00:06:40,488 --> 00:06:44,381
+the network, the cluster, the registry, the GitHub role,
+
+98
+00:06:44,381 --> 00:06:50,430
+and the load balancer controller, with its official IAM policy pinned to version 3.5.0.
+
+99
+00:06:50,967 --> 00:06:53,993
+The k8s folder holds the Kubernetes manifests:
+
+100
+00:06:53,993 --> 00:06:59,651
+deployment, service, ingress, network policies, disruption budget and service account.
+
+101
+00:07:00,200 --> 00:07:06,480
+The app folder holds the application, its Dockerfile, and the nginx configuration with the security headers.
+
+102
+00:07:07,033 --> 00:07:12,817
+And the scripts folder holds the tool installer for CI, plus two scripts we will use at the very end:
+
+103
+00:07:12,817 --> 00:07:16,481
+the teardown, and the verification that nothing was left behind.
+
+104
+00:07:16,481 --> 00:07:22,665
+Dot trivyignore lists the security exceptions we accepted on purpose, each with a reason and an expiry date.
+
+105
+00:07:24,400 --> 00:07:26,669
+The application is a profile card.
+
+106
+00:07:26,669 --> 00:07:28,470
+It is intentionally simple.
+
+107
+00:07:28,470 --> 00:07:31,606
+The goal of this project is not to teach React.
+
+108
+00:07:31,606 --> 00:07:36,945
+The goal is to show a production style DevSecOps platform around an application.
+
+109
+00:07:37,500 --> 00:07:40,760
+The original profile card was a single HTML file.
+
+110
+00:07:40,760 --> 00:07:44,885
+For this project it is rebuilt as a small React app with Vite.
+
+111
+00:07:45,433 --> 00:07:46,398
+Why rebuild it?
+
+112
+00:07:46,398 --> 00:07:49,937
+Because a real build step gives the pipeline real work:
+
+113
+00:07:49,937 --> 00:07:54,955
+a dependency tree to audit, unit tests to run, and a production build to scan.
+
+114
+00:07:55,500 --> 00:07:59,417
+The page footer shows the version and git commit of the running build,
+
+115
+00:07:59,417 --> 00:08:01,655
+which the pipeline bakes into the image.
+
+116
+00:08:01,655 --> 00:08:04,285
+So you can always see exactly what is deployed.
+
+117
+00:08:06,033 --> 00:08:09,736
+Before anything touches the cloud, the developer loop.
+
+118
+00:08:09,736 --> 00:08:15,360
+npm ci installs exactly what the lock file says, and the linter finds no problems.
+
+119
+00:08:15,900 --> 00:08:17,251
+Five unit tests pass.
+
+120
+00:08:17,251 --> 00:08:19,631
+One of them checks a security detail:
+
+121
+00:08:19,631 --> 00:08:25,741
+external links open with no referrer and no opener, so the linked site cannot control our page.
+
+122
+00:08:26,300 --> 00:08:29,757
+npm audit with level high finds zero vulnerabilities.
+
+123
+00:08:29,757 --> 00:08:35,041
+The pipeline runs exactly this command, and later we will see it fail on purpose.
+
+124
+00:08:35,600 --> 00:08:38,124
+And the production build is tiny:
+
+125
+00:08:38,124 --> 00:08:42,254
+one HTML file, one CSS file and one JavaScript bundle.
+
+126
+00:08:42,254 --> 00:08:44,855
+This is all that nginx will serve.
+
+127
+00:08:46,600 --> 00:08:49,302
+Now behave like a careful engineer:
+
+128
+00:08:49,302 --> 00:08:50,615
+check your tools.
+
+129
+00:08:50,615 --> 00:08:57,486
+Git, Terraform, the AWS CLI, Docker, kubectl version 1.37 to match the cluster, and Helm.
+
+130
+00:08:57,486 --> 00:09:04,821
+kubectl only supports one minor version of difference from the cluster, so the version matters.
+
+131
+00:09:05,367 --> 00:09:08,920
+Then the most important command before any cloud work:
+
+132
+00:09:08,920 --> 00:09:10,762
+aws sts get caller identity.
+
+133
+00:09:10,762 --> 00:09:15,367
+It tells you which account and which identity you are about to change.
+
+134
+00:09:15,367 --> 00:09:18,986
+I have redacted mine, but you should always read yours.
+
+135
+00:09:19,533 --> 00:09:20,530
+And the region.
+
+136
+00:09:20,530 --> 00:09:24,318
+Every command in this workshop is pinned to eu-central-1.
+
+137
+00:09:24,318 --> 00:09:29,569
+I built this in a shared company account, so we work inside a controlled scope:
+
+138
+00:09:29,569 --> 00:09:31,895
+one region, our own resources only.
+
+139
+00:09:31,895 --> 00:09:35,683
+Terraform enforces that too, as you will see in a moment.
+
+140
+00:09:37,433 --> 00:09:40,270
+Before running Terraform, let us read it.
+
+141
+00:09:40,270 --> 00:09:44,213
+Terraform is our source of truth for this infrastructure.
+
+142
+00:09:44,213 --> 00:09:45,527
+First, guard rails.
+
+143
+00:09:45,527 --> 00:09:48,087
+The region variable has a validation:
+
+144
+00:09:48,087 --> 00:09:50,923
+anything other than Frankfurt is refused.
+
+145
+00:09:51,467 --> 00:09:53,637
+The provider has allowed account IDs.
+
+146
+00:09:53,637 --> 00:09:56,747
+I pass my account ID through an environment variable,
+
+147
+00:09:56,747 --> 00:10:01,968
+and if my credentials ever pointed at a different account, Terraform would refuse to run.
+
+148
+00:10:02,533 --> 00:10:04,695
+Every resource gets default tags:
+
+149
+00:10:04,695 --> 00:10:07,381
+project, owner, and managed by Terraform.
+
+150
+00:10:07,381 --> 00:10:12,163
+At the end, we will use these tags to prove that nothing was left behind.
+
+151
+00:10:12,700 --> 00:10:13,637
+And the state.
+
+152
+00:10:13,637 --> 00:10:17,383
+Terraform state is kept locally here and ignored by git,
+
+153
+00:10:17,383 --> 00:10:22,334
+because it contains account IDs, resource details, sometimes even secrets.
+
+154
+00:10:22,334 --> 00:10:25,814
+Never commit Terraform state to a public repository.
+
+155
+00:10:25,814 --> 00:10:31,701
+For a team, you would put it in an S3 bucket with locking, which we discuss in part two.
+
+156
+00:10:33,467 --> 00:10:39,315
+The network uses the community VPC module, pinned to version 6.7.3.
+
+157
+00:10:39,315 --> 00:10:45,861
+One address range, 10.42 dot 0 dot 0 slash 16, over two availability zones.
+
+158
+00:10:46,400 --> 00:10:52,564
+Two large private subnets for the nodes and pods, and two small public subnets for the load balancer only.
+
+159
+00:10:53,100 --> 00:10:57,096
+One NAT gateway gives the private nodes outbound internet access.
+
+160
+00:10:57,096 --> 00:10:58,633
+One is cheaper for a lab.
+
+161
+00:10:58,633 --> 00:11:04,289
+In production you would use one per zone, so a zone failure does not cut off the other zone.
+
+162
+00:11:04,833 --> 00:11:11,223
+These tags tell the load balancer controller which subnets it may use for internet facing and internal load balancers.
+
+163
+00:11:11,767 --> 00:11:13,213
+And two security habits:
+
+164
+00:11:13,213 --> 00:11:19,241
+the default security group allows nothing, and flow logs record every connection for investigations.
+
+165
+00:11:20,000 --> 00:11:25,715
+The cluster uses the community EKS module, version 21.26.
+
+166
+00:11:25,715 --> 00:11:32,911
+Kubernetes 1.37, the newest version in standard support, placed in the private subnets.
+
+167
+00:11:33,467 --> 00:11:37,411
+The control plane writes API, audit and authenticator logs,
+
+168
+00:11:37,411 --> 00:11:40,888
+and Kubernetes secrets are encrypted with a KMS key.
+
+169
+00:11:40,888 --> 00:11:47,506
+I switched off IRSA, because we use the newer Pod Identity, which needs no extra identity provider.
+
+170
+00:11:48,067 --> 00:11:52,019
+Access entries map AWS identities to Kubernetes permissions.
+
+171
+00:11:52,019 --> 00:11:57,816
+Our GitHub deploy role gets the edit policy, but only inside the profile card namespace.
+
+172
+00:11:58,367 --> 00:12:05,136
+The VPC CNI add-on gets network policy enforcement switched on, and the Pod Identity agent is installed.
+
+173
+00:12:05,700 --> 00:12:06,981
+And the node group:
+
+174
+00:12:06,981 --> 00:12:14,124
+t3 medium instances, instance metadata version two required, with a hop limit of one, and encrypted disks.
+
+175
+00:12:15,867 --> 00:12:20,744
+This account already has a GitHub identity provider, shared by other teams.
+
+176
+00:12:20,744 --> 00:12:24,711
+IAM is global, so Terraform only reads it with a data source.
+
+177
+00:12:24,711 --> 00:12:29,653
+A switch exists for fresh accounts that have none, and it is off by default.
+
+178
+00:12:30,200 --> 00:12:32,750
+The container registry has immutable tags,
+
+179
+00:12:32,750 --> 00:12:36,938
+so a tag can never be overwritten, and every pushed image is scanned.
+
+180
+00:12:36,938 --> 00:12:40,094
+Force delete lets the teardown remove it completely.
+
+181
+00:12:40,633 --> 00:12:46,557
+The load balancer controller gets its AWS permissions through a Pod Identity association,
+
+182
+00:12:46,557 --> 00:12:49,152
+for one service account in kube-system.
+
+183
+00:12:49,152 --> 00:12:49,685
+No keys.
+
+184
+00:12:50,233 --> 00:12:55,424
+And Terraform installs the controller itself with Helm, chart version 3.5.0.
+
+185
+00:12:55,424 --> 00:13:00,273
+So one terraform apply gives us a cluster that is ready for an Ingress.
+
+186
+00:13:02,033 --> 00:13:05,823
+Before we create anything, let us look at the account.
+
+187
+00:13:05,823 --> 00:13:08,841
+In Frankfurt there is only the default VPC.
+
+188
+00:13:08,841 --> 00:13:14,246
+No instances, no load balancers, no clusters, no NAT gateways, no registries.
+
+189
+00:13:14,246 --> 00:13:15,720
+This is the baseline.
+
+190
+00:13:15,720 --> 00:13:22,598
+At the very end we compare against it, so we can prove we left the account exactly as we found it.
+
+191
+00:13:23,133 --> 00:13:25,484
+And one important existing thing:
+
+192
+00:13:25,484 --> 00:13:27,408
+a GitHub identity provider.
+
+193
+00:13:27,408 --> 00:13:31,326
+It belongs to the whole account, because IAM is global.
+
+194
+00:13:31,326 --> 00:13:33,677
+Other pipelines may depend on it.
+
+195
+00:13:33,677 --> 00:13:35,672
+We will reuse it, read only.
+
+196
+00:13:35,672 --> 00:13:39,163
+We will not modify it, and we will not delete it.
+
+197
+00:13:40,900 --> 00:13:44,381
+terraform init downloads the providers and modules.
+
+198
+00:13:44,381 --> 00:13:48,340
+And on my first try it failed, which is worth showing you.
+
+199
+00:13:48,340 --> 00:13:54,551
+On Windows, Terraform downloads modules with git, and git hit the 260 character path limit:
+
+200
+00:13:54,551 --> 00:13:55,779
+filename too long.
+
+201
+00:13:56,333 --> 00:13:59,315
+My working folder simply had a very long path.
+
+202
+00:13:59,315 --> 00:14:03,918
+The fix is to work from a short folder, or to enable long paths in git.
+
+203
+00:14:04,467 --> 00:14:07,154
+From a short folder, init works:
+
+204
+00:14:07,154 --> 00:14:15,301
+the VPC, EKS and KMS modules, and the AWS, Helm and Kubernetes providers, all at pinned versions.
+
+205
+00:14:15,867 --> 00:14:19,870
+terraform validate checks the configuration itself.
+
+206
+00:14:19,870 --> 00:14:20,341
+Valid.
+
+207
+00:14:22,100 --> 00:14:23,113
+Now the plan.
+
+208
+00:14:23,113 --> 00:14:25,920
+I am not going to blindly run apply.
+
+209
+00:14:25,920 --> 00:14:30,519
+First I want to see exactly what Terraform wants to create.
+
+210
+00:14:30,519 --> 00:14:31,454
+The network:
+
+211
+00:14:31,454 --> 00:14:34,494
+the VPC, four subnets, the NAT gateway.
+
+212
+00:14:35,033 --> 00:14:38,813
+The cluster, the node group, and the KMS key.
+
+213
+00:14:39,367 --> 00:14:40,046
+IAM roles:
+
+214
+00:14:40,046 --> 00:14:45,890
+for the GitHub deploy pipeline, for the load balancer controller, and for the cluster.
+
+215
+00:14:45,890 --> 00:14:49,016
+The registry, the log groups and the flow log.
+
+216
+00:14:49,016 --> 00:14:52,821
+And inside Kubernetes, the controller and our namespace.
+
+217
+00:14:53,367 --> 00:14:55,080
+And the most important line:
+
+218
+00:14:55,080 --> 00:14:58,263
+seventy two to add, zero to change, zero to destroy.
+
+219
+00:14:58,263 --> 00:15:06,341
+In a shared account, zero to change and zero to destroy is your proof that you will not touch anything that belongs to someone else.
+
+220
+00:15:08,100 --> 00:15:10,765
+Now we apply exactly that saved plan.
+
+221
+00:15:10,765 --> 00:15:13,934
+The registry and the VPC take a second each.
+
+222
+00:15:14,500 --> 00:15:19,154
+The KMS key takes half a minute, and the NAT gateway almost two minutes.
+
+223
+00:15:19,700 --> 00:15:22,193
+The EKS control plane is the slow part:
+
+224
+00:15:22,193 --> 00:15:24,558
+eight minutes and twenty one seconds.
+
+225
+00:15:24,558 --> 00:15:27,881
+Then the two worker nodes join in under two minutes.
+
+226
+00:15:28,433 --> 00:15:31,019
+Then Terraform reaches inside the new cluster:
+
+227
+00:15:31,019 --> 00:15:35,348
+it creates our namespace and installs the load balancer controller with Helm.
+
+228
+00:15:35,900 --> 00:15:38,861
+Seventy two resources, in twelve minutes.
+
+229
+00:15:38,861 --> 00:15:44,204
+Now let us go into AWS and verify that Terraform created what we expected.
+
+230
+00:15:45,967 --> 00:15:50,566
+This is the AWS console, through a read only session.
+
+231
+00:15:50,566 --> 00:15:56,989
+Our VPC, eks devsecops, with the address range 10.42 dot 0 dot 0 slash 16.
+
+232
+00:15:56,989 --> 00:16:00,026
+I have redacted the account number.
+
+233
+00:16:00,567 --> 00:16:03,671
+The resource map shows the design we read in Terraform:
+
+234
+00:16:03,671 --> 00:16:09,201
+in each of the two zones, one public and one private subnet, and the route tables connecting them.
+
+235
+00:16:10,967 --> 00:16:12,597
+The four subnets:
+
+236
+00:16:12,597 --> 00:16:17,391
+public 48 and 49, private 0 and 16, all available.
+
+237
+00:16:17,933 --> 00:16:20,500
+Notice the nodes are in private subnets.
+
+238
+00:16:20,500 --> 00:16:21,719
+Let me explain why.
+
+239
+00:16:21,719 --> 00:16:26,211
+A node without a public IP cannot be reached from the internet at all,
+
+240
+00:16:26,211 --> 00:16:29,419
+so a whole class of attacks simply does not apply.
+
+241
+00:16:29,419 --> 00:16:34,104
+But the nodes still need to reach out, to pull images and to talk to AWS.
+
+242
+00:16:34,104 --> 00:16:36,349
+That is the job of the NAT gateway:
+
+243
+00:16:36,349 --> 00:16:37,248
+outbound only.
+
+244
+00:16:39,000 --> 00:16:40,452
+The EKS cluster:
+
+245
+00:16:40,452 --> 00:16:48,260
+active, Kubernetes 1.37, standard support until December 2027, and zero health issues.
+
+246
+00:16:48,800 --> 00:16:53,525
+In the details you can see the API server endpoint and the cluster IAM role.
+
+247
+00:16:53,525 --> 00:16:57,814
+Every A R N here contains the account number, which you see redacted.
+
+248
+00:16:59,567 --> 00:17:00,939
+The access tab.
+
+249
+00:17:00,939 --> 00:17:02,769
+Authentication mode:
+
+250
+00:17:02,769 --> 00:17:03,501
+EKS API.
+
+251
+00:17:03,501 --> 00:17:08,076
+That means access entries, not the old config map.
+
+252
+00:17:08,633 --> 00:17:09,480
+Four entries:
+
+253
+00:17:09,480 --> 00:17:13,779
+the EKS service role, the node role, my admin user from Terraform,
+
+254
+00:17:13,779 --> 00:17:17,232
+and our GitHub deploy role with only the edit policy.
+
+255
+00:17:17,232 --> 00:17:19,903
+On the command line we can see the scope:
+
+256
+00:17:19,903 --> 00:17:24,397
+the deploy role's edit policy applies to one namespace, profile card.
+
+257
+00:17:24,397 --> 00:17:26,221
+Nothing else in the cluster.
+
+258
+00:17:27,967 --> 00:17:29,068
+The node group:
+
+259
+00:17:29,068 --> 00:17:36,041
+two t3 medium nodes, Amazon Linux 2023, minimum two, maximum three, in our two private subnets.
+
+260
+00:17:36,041 --> 00:17:38,096
+And look at the blue banner:
+
+261
+00:17:38,096 --> 00:17:42,206
+my console identity has no access to Kubernetes objects.
+
+262
+00:17:42,206 --> 00:17:43,381
+That is correct.
+
+263
+00:17:43,381 --> 00:17:49,326
+A read only AWS identity without an access entry sees nothing inside the cluster.
+
+264
+00:17:49,867 --> 00:17:53,210
+The launch template confirms the security settings:
+
+265
+00:17:53,210 --> 00:17:59,306
+instance metadata tokens required, a hop limit of one, and an encrypted 20 gigabyte gp3 disk.
+
+266
+00:18:01,067 --> 00:18:06,683
+In EC2 you can see the two running nodes, one in eu-central-1a and one in 1b.
+
+267
+00:18:06,683 --> 00:18:09,017
+The public IPv4 column is empty.
+
+268
+00:18:09,017 --> 00:18:11,861
+No node is reachable from the internet.
+
+269
+00:18:13,600 --> 00:18:14,428
+The KMS key:
+
+270
+00:18:14,428 --> 00:18:17,947
+customer managed, enabled, with automatic rotation.
+
+271
+00:18:17,947 --> 00:18:19,810
+Why a customer managed key?
+
+272
+00:18:19,810 --> 00:18:24,295
+Because you control its policy and you can audit every use of it.
+
+273
+00:18:24,295 --> 00:18:29,815
+If a Kubernetes secret is ever read from etcd storage directly, it is encrypted.
+
+274
+00:18:30,367 --> 00:18:31,996
+The container registry:
+
+275
+00:18:31,996 --> 00:18:34,616
+tag immutability on, scan on push on.
+
+276
+00:18:34,616 --> 00:18:38,866
+Nobody can silently replace an image behind an existing tag.
+
+277
+00:18:39,400 --> 00:18:41,832
+And CloudWatch holds two log groups:
+
+278
+00:18:41,832 --> 00:18:47,372
+the cluster's control plane logs, and the VPC flow logs, both kept for seven days.
+
+279
+00:18:47,372 --> 00:18:50,884
+In an incident, these are the first places you look.
+
+280
+00:18:52,633 --> 00:18:56,379
+Let me summarise the cluster security at a senior level.
+
+281
+00:18:56,379 --> 00:18:57,315
+Private nodes:
+
+282
+00:18:57,315 --> 00:19:01,663
+no public IP, so nothing on the internet can even try to connect.
+
+283
+00:19:02,200 --> 00:19:04,866
+IMDS version two with a hop limit of one:
+
+284
+00:19:04,866 --> 00:19:08,507
+every node has AWS credentials in its instance metadata.
+
+285
+00:19:08,507 --> 00:19:11,758
+The hop limit means a container cannot reach them,
+
+286
+00:19:11,758 --> 00:19:15,724
+so a compromised pod cannot become a compromised AWS account.
+
+287
+00:19:16,267 --> 00:19:17,435
+Encrypted disks:
+
+288
+00:19:17,435 --> 00:19:21,526
+if a volume snapshot is ever copied, it reveals nothing.
+
+289
+00:19:22,067 --> 00:19:27,416
+KMS envelope encryption of Kubernetes secrets, with a key you control and can audit.
+
+290
+00:19:27,967 --> 00:19:28,912
+Access entries:
+
+291
+00:19:28,912 --> 00:19:35,401
+every identity that can use the cluster is listed explicitly, and the pipeline only gets one namespace.
+
+292
+00:19:35,967 --> 00:19:37,176
+And Pod Identity:
+
+293
+00:19:37,176 --> 00:19:43,647
+when a pod needs AWS permissions, like the load balancer controller, it gets them from EKS.
+
+294
+00:19:43,647 --> 00:19:47,843
+We never put AWS access keys inside the Kubernetes cluster.
+
+295
+00:19:49,600 --> 00:19:51,867
+Now the load balancer controller.
+
+296
+00:19:51,867 --> 00:19:52,966
+What does it do?
+
+297
+00:19:52,966 --> 00:20:00,933
+It watches Kubernetes Ingress objects, and for each one it creates and manages a real AWS Application Load Balancer,
+
+298
+00:20:00,933 --> 00:20:04,368
+with listeners, target groups and security groups.
+
+299
+00:20:04,368 --> 00:20:06,634
+Terraform installed it with Helm:
+
+300
+00:20:06,634 --> 00:20:09,245
+chart and app version 3.5.0, deployed.
+
+301
+00:20:09,800 --> 00:20:13,624
+It runs as two replicas in kube-system, both running.
+
+302
+00:20:14,167 --> 00:20:18,461
+And how does it get AWS permissions to create load balancers?
+
+303
+00:20:18,461 --> 00:20:20,362
+A Pod Identity association:
+
+304
+00:20:20,362 --> 00:20:23,531
+its service account is linked to an IAM role.
+
+305
+00:20:23,531 --> 00:20:26,347
+EKS hands the pod temporary credentials.
+
+306
+00:20:26,347 --> 00:20:28,600
+There is no access key anywhere.
+
+307
+00:20:29,133 --> 00:20:30,343
+And the nodes:
+
+308
+00:20:30,343 --> 00:20:34,492
+two, ready, Kubernetes 1.37, and no external IP.
+
+309
+00:20:34,492 --> 00:20:38,123
+The platform is ready for our application.
+
+310
+00:20:39,867 --> 00:20:41,851
+Now the application manifests.
+
+311
+00:20:41,851 --> 00:20:45,886
+Two replicas, and a rolling update with max unavailable zero:
+
+312
+00:20:45,886 --> 00:20:49,326
+an old pod is only removed after a new one is ready.
+
+313
+00:20:49,867 --> 00:20:55,101
+No service account token, because the app never calls the Kubernetes API.
+
+314
+00:20:55,101 --> 00:21:02,271
+It runs as user 10101, never root, with the default seccomp profile blocking dangerous system calls.
+
+315
+00:21:02,833 --> 00:21:05,347
+The container cannot escalate privileges,
+
+316
+00:21:05,347 --> 00:21:09,823
+its root file system is read only, and every Linux capability is dropped.
+
+317
+00:21:10,367 --> 00:21:15,408
+Resource requests reserve what it needs, and limits stop it from starving its neighbours.
+
+318
+00:21:15,967 --> 00:21:21,727
+Readiness and liveness probes on the healthz endpoint, so traffic only reaches pods that are ready.
+
+319
+00:21:21,727 --> 00:21:27,661
+And a fifteen second pause before stopping, so the load balancer can drain a pod before it disappears.
+
+320
+00:21:29,400 --> 00:21:30,581
+Network policies.
+
+321
+00:21:30,581 --> 00:21:32,039
+First a default deny:
+
+322
+00:21:32,039 --> 00:21:36,484
+no traffic in and no traffic out for every pod in the namespace.
+
+323
+00:21:37,033 --> 00:21:38,921
+Then exactly one exception:
+
+324
+00:21:38,921 --> 00:21:42,766
+TCP port 8080, and only from the load balancer subnets.
+
+325
+00:21:42,766 --> 00:21:48,220
+Not from the whole VPC, because on EKS, pod addresses come from the VPC range,
+
+326
+00:21:48,220 --> 00:21:51,926
+and that would let every other pod in the cluster in.
+
+327
+00:21:51,926 --> 00:21:55,351
+I learned that the hard way in my previous build.
+
+328
+00:21:55,900 --> 00:22:00,371
+A pod disruption budget keeps at least one pod running during node maintenance.
+
+329
+00:22:00,933 --> 00:22:06,803
+The Ingress asks for an internet facing Application Load Balancer that sends traffic straight to pod IPs,
+
+330
+00:22:06,803 --> 00:22:08,760
+and checks their health on healthz.
+
+331
+00:22:09,300 --> 00:22:12,226
+And the namespace itself, created by Terraform,
+
+332
+00:22:12,226 --> 00:22:16,210
+enforces the Kubernetes Pod Security standard called restricted.
+
+333
+00:22:16,210 --> 00:22:19,944
+Pods that do not follow these rules are refused at the door.
+
+334
+00:22:21,700 --> 00:22:28,310
+Here is the difference between the application works, and the application is running securely.
+
+335
+00:22:28,310 --> 00:22:32,037
+Inside a running pod, the process runs as user 10101.
+
+336
+00:22:32,037 --> 00:22:32,669
+Not root.
+
+337
+00:22:33,233 --> 00:22:37,415
+If an attacker gets in, they cannot change the website files:
+
+338
+00:22:37,415 --> 00:22:38,923
+read only file system.
+
+339
+00:22:38,923 --> 00:22:41,803
+Only a small temporary folder is writable.
+
+340
+00:22:42,367 --> 00:22:44,882
+The process has zero Linux capabilities.
+
+341
+00:22:44,882 --> 00:22:48,151
+Both the permitted and the effective sets are empty.
+
+342
+00:22:48,700 --> 00:22:52,327
+It cannot call out to the internet, not even resolve a name,
+
+343
+00:22:52,327 --> 00:22:55,591
+so an attacker cannot download tools or send data out.
+
+344
+00:22:56,133 --> 00:22:59,764
+And nobody can start a privileged container in this namespace.
+
+345
+00:22:59,764 --> 00:23:01,169
+Pod Security refuses it.
+
+346
+00:23:01,169 --> 00:23:07,318
+A container that only works when it runs as privileged root is a problem waiting to happen in production.
+
+347
+00:23:09,067 --> 00:23:10,261
+Now the container.
+
+348
+00:23:10,261 --> 00:23:12,252
+The Dockerfile has two stages:
+
+349
+00:23:12,252 --> 00:23:17,960
+Node builds the static files, and the final image only contains nginx and those files.
+
+350
+00:23:17,960 --> 00:23:19,819
+Notice the apk upgrade step.
+
+351
+00:23:19,819 --> 00:23:28,911
+In my first build, Trivy blocked the official base image because of a high severity bug in a library called pcre2 that already had a fix.
+
+352
+00:23:28,911 --> 00:23:31,500
+Upgrading the Alpine packages fixed it.
+
+353
+00:23:32,033 --> 00:23:38,113
+Trivy scans the operating system packages and the application dependencies inside the image,
+
+354
+00:23:38,113 --> 00:23:40,690
+against public vulnerability databases.
+
+355
+00:23:40,690 --> 00:23:46,109
+Critical or high with a fix available means exit code one, and the pipeline stops.
+
+356
+00:23:46,109 --> 00:23:46,439
+Here:
+
+357
+00:23:46,439 --> 00:23:46,770
+zero.
+
+358
+00:23:46,770 --> 00:23:50,008
+But remember, scanning only finds known problems.
+
+359
+00:23:50,008 --> 00:23:54,105
+That is why it is one layer among many, not the whole defence.
+
+360
+00:23:55,867 --> 00:24:00,529
+An SBOM tells us what components exist inside our image.
+
+361
+00:24:00,529 --> 00:24:02,610
+Syft lists every package:
+
+362
+00:24:02,610 --> 00:24:09,604
+curl, musl, nginx, zlib, and pcre2 version 10.49, the fixed version from that story.
+
+363
+00:24:10,167 --> 00:24:13,818
+Seventy packages in total, written as a CycloneDX document.
+
+364
+00:24:13,818 --> 00:24:20,563
+The day a new vulnerability is announced, you search your SBOMs and know in seconds whether you are affected.
+
+365
+00:24:22,300 --> 00:24:24,945
+And the last piece before the registry:
+
+366
+00:24:24,945 --> 00:24:25,488
+signing.
+
+367
+00:24:25,488 --> 00:24:28,201
+Signing means a cryptographic statement:
+
+368
+00:24:28,201 --> 00:24:31,660
+this exact image digest was built by this pipeline.
+
+369
+00:24:31,660 --> 00:24:33,694
+Image provenance, in one word.
+
+370
+00:24:34,233 --> 00:24:36,095
+We use cosign in keyless mode.
+
+371
+00:24:36,095 --> 00:24:41,680
+The GitHub job proves its identity, gets a certificate valid for a few minutes, and signs.
+
+372
+00:24:41,680 --> 00:24:45,155
+There is no long lived signing key that could be stolen,
+
+373
+00:24:45,155 --> 00:24:48,878
+and every signature is written to a public transparency log.
+
+374
+00:24:49,433 --> 00:24:53,604
+That is why signing happens inside the pipeline, not on my laptop:
+
+375
+00:24:53,604 --> 00:24:56,701
+the identity being signed is the pipeline itself.
+
+376
+00:24:56,701 --> 00:24:58,723
+You will see it run in part two.
+
+377
+00:24:59,267 --> 00:25:00,844
+And the honest next step:
+
+378
+00:25:00,844 --> 00:25:04,881
+in this project the cluster does not yet refuse unsigned images.
+
+379
+00:25:04,881 --> 00:25:08,224
+My previous project shows exactly that, with Kyverno.
+
+380
+00:25:08,224 --> 00:25:11,946
+That is where signing turns from evidence into enforcement.
+
+381
+00:25:13,700 --> 00:25:14,803
+That is part one.
+
+382
+00:25:14,803 --> 00:25:18,046
+We have a VPC across two zones with private nodes,
+
+383
+00:25:18,046 --> 00:25:22,067
+an EKS cluster with encryption, audit logs and access entries,
+
+384
+00:25:22,067 --> 00:25:27,451
+the load balancer controller without any keys, and a workload that runs restricted.
+
+385
+00:25:27,451 --> 00:25:31,991
+And we verified all of it, on the command line and in the AWS console.
+
+386
+00:25:32,533 --> 00:25:35,279
+In part two, we connect GitHub through OIDC,
+
+387
+00:25:35,279 --> 00:25:40,021
+push code through the real pipeline, watch a security check fail on purpose,
+
+388
+00:25:40,021 --> 00:25:44,514
+troubleshoot a broken rollout, and then destroy everything and prove it.
+
+389
+00:25:44,514 --> 00:25:45,388
+See you there.

@@ -9,6 +9,8 @@ const BROWSER = process.env.BROWSER || "C:\\Program Files (x86)\\Microsoft\\Edge
 const PORT = 9341;
 const jobs = JSON.parse(readFileSync(process.argv[2], "utf8"));
 const browser = spawn(BROWSER, ["--headless=new", "--disable-gpu", "--hide-scrollbars", `--remote-debugging-port=${PORT}`,
+  // a clean, isolated profile: no sign-in, no sync, no extensions (they slow every frame down)
+  "--disable-extensions", "--disable-sync", "--no-first-run", "--disable-background-networking",
   `--user-data-dir=${process.argv[3]}`, "--allow-file-access-from-files", "about:blank"], { stdio: "ignore" });
 
 let target;

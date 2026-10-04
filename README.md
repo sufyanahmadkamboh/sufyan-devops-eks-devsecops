@@ -16,6 +16,8 @@ A small React app goes from a laptop to the internet on **Amazon EKS**, the way 
 >
 > 🎬 **Video walkthrough:** the whole build, every tool, the attacks and the teardown, made from the real recordings
 > (23 minutes): see [video/](video/README.md).
+> A two-part, step-by-step **workshop** (built live on AWS: Terraform, a console tour, the pipeline, a failing security
+> check, troubleshooting, and the verified teardown) is in the same folder.
 
 **Measured on a real AWS account** (details: [docs/test-results.md](docs/test-results.md)):
 

@@ -1,0 +1,3 @@
+💻 Code, Terraform and the pipeline: https://github.com/sufyanahmadkamboh/sufyan-devops-eks-devsecops
+▶️ Part 2 (OIDC, the pipeline, a failing scan, troubleshooting, teardown): {{PART2_LINK}}
+⚠️ If you build it in your own account: run scripts/teardown.sh the same day. The lab costs roughly $0.30 per hour while it runs.

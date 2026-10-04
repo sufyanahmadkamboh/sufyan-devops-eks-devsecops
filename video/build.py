@@ -28,11 +28,17 @@ from pygments.formatters import HtmlFormatter  # noqa: E402
 
 from components import SVG_DEFS  # noqa: E402
 from redact import check, redact  # noqa: E402
-from scenes import SCENES  # noqa: E402
+import importlib  # noqa: E402
 
-OUT = HERE / "out"
+# PART=1 or PART=2 builds the two-part workshop (scenes_part1.py / scenes_part2.py) into out/partN and youtube/partN;
+# without PART, the original single video (scenes.py) is built into out/ and youtube/.
+PART = os.environ.get("PART", "")
+SCENES = importlib.import_module(f"scenes_part{PART}" if PART else "scenes").SCENES
+
+OUT = HERE / "out" / f"part{PART}" if PART else HERE / "out"
 FRAMES, AUDIO = OUT / "frames", OUT / "audio"
-YT = HERE / "youtube"
+YT = HERE / "youtube" / f"part{PART}" if PART else HERE / "youtube"
+THUMBNAIL = HERE / (f"thumbnail_part{PART}.html" if PART else "thumbnail.html")
 FPS = 30
 LEAD, GAP, TAIL, FADE = 0.5, 0.55, 0.7, 0.4   # seconds
 RATE = 24000                                   # narration WAV: 24 kHz, 16-bit, mono
@@ -96,6 +102,7 @@ h1{position:absolute;left:100px;right:100px;top:96px;font-size:58px;line-height:
 .tile.now{box-shadow:0 0 0 4px var(--tone);background:#182c49}
 .tile-icon{font-size:44px}.tile-label{font-size:24px;font-weight:700;margin:10px 0 8px;min-height:62px}
 .tile-value{font-size:52px;font-weight:900;color:var(--tone)}.tile-note{font-size:20px;color:var(--muted);margin-top:6px}
+.compact .tile{min-height:0;padding:16px 22px}.compact .tile-icon{font-size:36px}.compact .tile-label{min-height:0;margin:6px 0 4px}.compact .tile-value{font-size:40px}
 .notes{list-style:none;display:flex;flex-direction:column;gap:18px}
 .notes li{background:var(--panel);border:3px solid var(--line);border-radius:18px;padding:18px 22px}
 .notes li.now{border-color:var(--amber);background:#2b2410}
@@ -148,7 +155,8 @@ def chapters() -> list[tuple[int, str]]:
 
 
 def write_page() -> Path:
-    OUT.mkdir(exist_ok=True)
+    OUT.mkdir(parents=True, exist_ok=True)
+    YT.mkdir(parents=True, exist_ok=True)
     chaps = chapters()
     style = HtmlFormatter(style="github-dark").get_style_defs(".code pre")
     parts = []
@@ -190,7 +198,7 @@ def frames() -> None:
     url = page.as_uri()
     jobs = [{"url": f"{url}?sc={i}&st={k}", "out": str(FRAMES / f"{frame_name(i, k)}.png")}
             for i, s in enumerate(SCENES) for k in range(len(s["steps"]))]
-    jobs.append({"url": (HERE / "thumbnail.html").as_uri(), "out": str(YT / "thumbnail.png"), "w": 1280, "h": 720})
+    jobs.append({"url": THUMBNAIL.as_uri(), "out": str(YT / "thumbnail.png"), "w": 1280, "h": 720})
     shoot(jobs, "browser-profile")
 
 

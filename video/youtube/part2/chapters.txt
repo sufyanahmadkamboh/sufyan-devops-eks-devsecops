@@ -1,0 +1,15 @@
+0:00 Where we are
+0:37 GitHub OIDC: no stored keys
+2:44 The pipeline, stage by stage
+5:32 Pushing code, the real pipeline
+7:39 The application goes live
+10:01 A security check fails, on purpose
+11:15 Troubleshooting a broken rollout
+14:27 Why this is DevSecOps
+15:11 The final architecture
+15:53 From lab to enterprise
+17:42 Cost
+18:30 Teardown, done right
+19:53 Verifying that nothing is left
+21:21 Safety rules for shared accounts
+22:03 What you can do now

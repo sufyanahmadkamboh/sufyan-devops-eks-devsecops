@@ -1,0 +1,5 @@
+EKS DevSecOps Workshop Part 2: GitHub OIDC, Pipeline, Failing Scan, Troubleshooting, Teardown
+
+Alternatives (A/B test with YouTube "Test & compare"):
+I Broke My EKS Deployment on Purpose (and Fixed It) | DevSecOps Part 2
+Push to Production on EKS in 4 Minutes, Without a Single AWS Key in GitHub
