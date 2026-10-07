@@ -1,3 +1,0 @@
-💻 Code, Terraform and the pipeline: https://github.com/sufyanahmadkamboh/sufyan-devops-eks-devsecops
-◀️ Part 1 (architecture, Terraform, VPC, EKS): {{PART1_LINK}}
-What would you add first to make this production ready: HTTPS, admission policies, or monitoring?

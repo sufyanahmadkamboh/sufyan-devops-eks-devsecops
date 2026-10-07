@@ -1,1 +1,0 @@
-aws eks tutorial, eks terraform, terraform eks module, devsecops pipeline, github actions aws, github actions oidc aws, aws load balancer controller, eks ingress alb, kubernetes security, trivy image scan, sbom, cosign, react kubernetes deployment, eks access entries, pod identity eks, kubernetes troubleshooting, readiness probe, devops project, aws devops, terraform aws

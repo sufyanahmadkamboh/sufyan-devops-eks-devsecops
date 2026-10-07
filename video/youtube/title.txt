@@ -1,5 +1,0 @@
-Deploy React to AWS EKS with Terraform + DevSecOps CI/CD (Full Project)
-
-Alternatives (A/B test with YouTube "Test & compare"):
-AWS EKS From Zero: Terraform, GitHub Actions, Trivy, ALB Ingress (and I Attack It)
-I Built a Secure EKS Platform, Attacked It, Then Deleted Everything

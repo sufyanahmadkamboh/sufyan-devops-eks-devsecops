@@ -1,5 +1,7 @@
 # Video tutorials
 
+> The YouTube upload package (`youtube/`) is written by the build and kept locally; it is not published in this repository.
+
 There are two:
 
 - **The project video** (`scenes.py`, 23 minutes): the whole build, the attacks and the teardown, in one go.

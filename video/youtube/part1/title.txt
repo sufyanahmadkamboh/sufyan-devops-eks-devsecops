@@ -1,5 +1,0 @@
-EKS DevSecOps Workshop Part 1: Terraform, VPC and a Secure EKS Cluster (Real AWS)
-
-Alternatives (A/B test with YouTube "Test & compare"):
-Build a Production-Style EKS Platform with Terraform, Live on AWS (Part 1)
-Amazon EKS From Zero with Terraform: VPC, Nodes, ALB Controller, Console Tour
