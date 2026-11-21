@@ -2,7 +2,7 @@
 # only the load balancer lives in the public subnets.
 module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
-  version = "6.7.3"
+  version = "6.8.0"
 
   name = local.name
   cidr = "10.42.0.0/16"
